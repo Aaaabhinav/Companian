@@ -1,9 +1,9 @@
 import express from "express";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
-import { createPost } from "./mcp.tool.js";
 import { chromium } from 'playwright';
 import { z } from "zod";
+import { handleFileOperation, toolSchema as fileOpsSchema } from "./file-ops.tool.js";
 
 // Initialize Playwright browser variables
 let browser = null;
@@ -14,25 +14,19 @@ let page = null;
 async function ensureBrowserInitialized() {
   if (!browser || browser._closed) {
     try {
-      // User profile directories for different browsers
-      // Chrome: C:\Users\{username}\AppData\Local\Google\Chrome\User Data
-      // Edge: C:\Users\{username}\AppData\Local\Microsoft\Edge\User Data
       const username = process.env.USERNAME || 'Abhinav Dixit';
       const chromeUserDataDir = `C:\\Users\\${username}\\AppData\\Local\\Google\\Chrome\\User Data`;
       
-      // Use the existing user profile so we retain logged-in state
       browser = await chromium.launchPersistentContext(chromeUserDataDir, {
         headless: false,
         channel: 'chrome'
       });
       
-      // Get the first page or create a new one if none exists
       const pages = await browser.pages();
       page = pages.length > 0 ? pages[0] : await browser.newPage();
       console.log("Browser initialized successfully using existing Chrome profile");
     } catch (error) {
       console.error("Error initializing browser with user profile, falling back to default:", error);
-      // Fallback to regular browser launch if profile access fails
       try {
         browser = await chromium.launch({ 
           headless: false,
@@ -54,7 +48,6 @@ async function ensureBrowserInitialized() {
 // Safely execute a browser action with proper error handling
 async function safeBrowserAction(action) {
   try {
-    // First check if browser and page are still valid
     if (!browser || browser._closed) {
       console.log("Browser was closed. Reinitializing...");
       browser = null;
@@ -73,10 +66,8 @@ async function safeBrowserAction(action) {
       }
     }
     
-    // Execute the provided action
     return await action();
   } catch (error) {
-    // If the error is about closed browser/page, reset variables for next time
     if (error.message.includes("closed")) {
       console.log("Browser or page was closed during operation. Will reinitialize on next use.");
       browser = null;
@@ -92,42 +83,9 @@ const server = new McpServer({
     version: "1.0.0"
 });
 
-// ... set up server resources, tools, and prompts ...
-
 const app = express();
 
-
-server.tool(
-    "addTwoNumbers",
-    "Add two numbers",
-    {
-        a: z.number(),
-        b: z.number()
-    },
-    async (arg) => {
-        const { a, b } = arg;
-        return {
-            content: [
-                {
-                    type: "text",
-                    text: `The sum of ${a} and ${b} is ${a + b}`
-                }
-            ]
-        }
-    }
-)
-
-server.tool(
-    "createPost",
-    "Create a post on X formally known as Twitter ", {
-    status: z.string()
-}, async (arg) => {
-    const { status } = arg;
-    return createPost(status);
-})
-
-// Add Playwright tools
-
+// YouTube tool
 server.tool(
     "playYouTubeVideo",
     "Play a YouTube video by searching for the provided query", {
@@ -141,7 +99,7 @@ server.tool(
             // Navigate to YouTube
             await page.goto('https://www.youtube.com/');
             
-            // Accept cookies if the dialog appears (common in some regions)
+            // Accept cookies if the dialog appears
             try {
                 const acceptButton = await page.waitForSelector('button:has-text("Accept all")', { timeout: 5000 });
                 if (acceptButton) {
@@ -172,7 +130,6 @@ server.tool(
                     ]
                 };
             } catch (titleError) {
-                // If we can't get the title, just return a generic message
                 return {
                     content: [
                         {
@@ -194,107 +151,33 @@ server.tool(
             ]
         };
     }
-})
+});
 
+// File Operations tool
 server.tool(
-    "navigateToUrl",
-    "Navigate to a specific URL in the browser", {
-    url: z.string().describe("URL to navigate to (include http:// or https:// prefix)")
-}, async (arg) => {
-    const { url } = arg;
-    try {
-        return await safeBrowserAction(async () => {
-            await ensureBrowserInitialized();
-            
-            await page.goto(url);
-            
-            const title = await page.title();
-            
-            return {
-                content: [
-                    {
-                        type: "text",
-                        text: `Navigated to: ${title} (${url})`
-                    }
-                ]
-            };
-        });
-    } catch (error) {
-        console.error("Error navigating to URL:", error);
-        return {
-            content: [
-                {
-                    type: "text",
-                    text: `Error navigating to URL: ${error.message}`
-                }
-            ]
-        };
+    fileOpsSchema.name,
+    fileOpsSchema.description,
+    fileOpsSchema.schema,
+    async (args) => {
+        return await handleFileOperation(args);
     }
-})
+);
 
-server.tool(
-    "closeBrowser",
-    "Close the browser if it's open", 
-    {}, 
-    async () => {
-    try {
-        if (browser) {
-            await browser.close();
-            browser = null;
-            context = null;
-            page = null;
-            
-            return {
-                content: [
-                    {
-                        type: "text",
-                        text: "Browser closed successfully"
-                    }
-                ]
-            };
-        }
-        
-        return {
-            content: [
-                {
-                    type: "text",
-                    text: "No browser was open"
-                }
-            ]
-        };
-    } catch (error) {
-        console.error("Error closing browser:", error);
-        // Reset variables anyway
-        browser = null;
-        context = null;
-        page = null;
-        return {
-            content: [
-                {
-                    type: "text",
-                    text: `Error closing browser: ${error.message}, but variables have been reset`
-                }
-            ]
-        };
-    }
-})
-
-// to support multiple simultaneous connections we have a lookup object from
-// sessionId to transport
+// Server setup for SSE and messages
 const transports = {};
 
 app.get("/sse", async (req, res) => {
     const transport = new SSEServerTransport('/messages', res);
-    transports[ transport.sessionId ] = transport;
+    transports[transport.sessionId] = transport;
     res.on("close", () => {
-        delete transports[ transport.sessionId ];
+        delete transports[transport.sessionId];
     });
     await server.connect(transport);
 });
 
 app.post("/messages", async (req, res) => {
     const sessionId = req.query.sessionId;
-    const transport = transports[ sessionId ];
+    const transport = transports[sessionId];
     if (transport) {
         await transport.handlePostMessage(req, res);
     } else {
