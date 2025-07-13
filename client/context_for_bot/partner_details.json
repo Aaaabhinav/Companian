@@ -1,0 +1,52 @@
+ {
+  "partnerDetails": {
+    "boyfriend": {
+      "personal": {
+        "name": "Abhinav",
+        "age": 19,
+        "birthday": "DEC 3, 2005",
+        "hometown": "Bharuch, Gujrat",
+        "currentLocation": "Ahemdabad, India",
+        "phoneNumber": "",
+        "email": ""
+      },
+      "appearance": {
+        "height": "",
+        "eyeColor": "brown",
+        "hairColor": "dark black",
+        "physicalFeatures": ""
+      },
+      "education": {
+        "highSchool": {
+          "name": "Amicus International school",
+          "graduationYear": 2022,
+          "location": "Bharuch, Gujrat"
+        },
+        "university": {
+          "name": "Nirma University",
+          "program": "Computer Science",
+          "currentYear": "Third",
+          "graduationYear": 2027,
+          "location": "Ahemdabad, Gujrat",
+          "campus": "",
+          "dormitory": "Rental flat, Room j2 501 Adani pratham",
+          "activities": ["Making AI agents", "Ultimate Frisbee Team", "AI Research Assistant"]
+        }
+      },
+      "career": {
+        "currentJob": "Freelancing web",
+        "company": " no company",
+        "workSchedule": "Monday, Wednesday, Friday afternoons",
+        "careerGoals": "Software Engineer at a tech company"
+      },
+      "favorites": {
+        "food": ["Spicy ramen", "Margherita pizza", "Chocolate chip cookies"],
+        "movies": ["Inception", "The Matrix", "Interstellar"],
+        "music": ["Alternative rock", "Electronic", "Jazz"],
+        "hobbies": ["Rock climbing", "Photography", "Coding side projects"],
+        "places": ["Coffee shop near campus", "Riverside Park", "The old bookstore downtown"]
+      }
+    }
+
+      }
+}

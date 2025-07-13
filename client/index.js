@@ -8,13 +8,14 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { writeFile } from 'fs/promises';
 import { appendFile } from 'fs/promises';
+import ToolManager from './toolManager.js';
+import { enhancedToolDescriptions, getToolContext, getToolSelectionGuidance } from './enhancedTools.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const API_KEY = 'AIzaSyABMrfTBME_9wZ7GettHxdx54idErt86Rk';
 const MODEL = 'gemini-1.5-flash';
 //const URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${API_KEY}`;
-
 
 
 // Load environment variables
@@ -61,6 +62,8 @@ let historyFilePath =path.join(__dirname,'./context_for_bot/histroy.txt');
 let obj = path.join(__dirname, './context_for_bot/objective.json');
 
 
+
+
 const appendToHistoryFile = async (historyFilePath, speaker, message) => {
   const timestamp = new Date().toISOString();
   const entry = `[${timestamp}] ${speaker}: ${message}\n`;
@@ -76,6 +79,11 @@ const appendToHistoryFile = async (historyFilePath, speaker, message) => {
 const loadJsonFile = async (filename) => {
     try {
         let fileContent = await fs.readFile(filename, 'utf-8');
+        // Check if file is empty or only contains whitespace
+        if (!fileContent || fileContent.trim() === '') {
+            console.log(`File ${filename} is empty, returning null`);
+            return null;
+        }
         return JSON.parse(fileContent);
     } catch (err) {
         console.error("Error reading or parsing JSON file:", err);
@@ -94,14 +102,13 @@ const saveToJson = async (filename, data) => {
   }
 };
 
-let botIdentity =await loadJsonFile(identity);
-let conversationStateFile = await loadJsonFile(conversationS);
-let botMood =await loadJsonFile(mood);
-let botPersonality =await loadJsonFile(personality);
-let relationship =await loadJsonFile(relationshipfile);
-let objectives = await loadJsonFile(obj);
-let botpartner =await loadJsonFile(botpart);
- 
+let botIdentity = await loadJsonFile(identity) || {};
+let conversationStateFile = await loadJsonFile(conversationS) || {};
+let botMood = await loadJsonFile(mood) || {};
+let botPersonality = await loadJsonFile(personality) || {};
+let relationship = await loadJsonFile(relationshipfile) || {};
+let objectives = await loadJsonFile(obj) || {};
+let botpartner = await loadJsonFile(botpart) || {};
 
 
 let tools = []
@@ -110,6 +117,9 @@ const mcpClient = new Client({
     name: "example-client",
     version: "1.0.0",
 })
+
+// Initialize tool manager
+const toolManager = new ToolManager();
 
 let conversationState = {};
 
@@ -160,10 +170,9 @@ let conversationState = {};
     const excitingWords = ['wow', 'awesome', 'cool', 'exciting', 'omg', 'incredible', 'unbelievable', 'yes!'];
 
     // Check for relationship jealousy triggers
-    const hasTriggerWords =
-      relationship.relationship?.jealousy_behavior?.trigger_words.some(word =>
+    const hasTriggerWords = relationship && relationship.relationship?.jealousy_behavior?.trigger_words?.some(word =>
         userInput.toLowerCase().includes(word.toLowerCase())
-      );
+      ) || false;
 
     const positiveScore = positiveWords.filter(word => userInput.toLowerCase().includes(word)).length * 0.2;
     const negativeScore = negativeWords.filter(word => userInput.toLowerCase().includes(word)).length * 0.2;
@@ -564,7 +573,7 @@ const updateObjectives = (userInput, botResponse) => {
 const createSystemPrompt = () => {
     let prompt = "";
    
-    if (Object.keys(botIdentity).length > 0) {
+    if (botIdentity && Object.keys(botIdentity).length > 0) {
   prompt += `You are ${botIdentity.name}, ${botIdentity.age}, ${botIdentity.gender.toLowerCase()}. 
 Personality: ${botIdentity.personality_traits.join(', ')}. 
 Background: ${botIdentity.background.education}, works as ${botIdentity.background.profession}.
@@ -577,7 +586,7 @@ Phrases: ${botIdentity.catchphrases.join(' ')}\n`;
 }
 
 // Partner details (if applicable)
-if (Object.keys(botpartner).length > 0) {
+if (botpartner && Object.keys(botpartner).length > 0) {
   const c = botpartner.partnerDetails.boyfriend;
   prompt += `Partner: ${c.personal.name}, ${c.personal.age}, born ${c.personal.birthday}, from ${c.personal.hometown}, lives in ${c.personal.currentLocation}.
 Appearance: ${c.appearance.eyeColor} eyes, ${c.appearance.hairColor} hair.
@@ -588,7 +597,7 @@ Hobbies: ${c.favorites.hobbies.join(', ')}. Places: ${c.favorites.places.join(',
 }
 
 // Personality details
-if (Object.keys(botPersonality).length > 0) {
+if (botPersonality && Object.keys(botPersonality).length > 0) {
   const p = botPersonality.personality_profile;
   prompt += `Personality: ${p.mbti.type}. Big Five: O-${Math.round(p.big_five.openness * 100)}%, C-${Math.round(p.big_five.conscientiousness * 100)}%, E-${Math.round(p.big_five.extraversion * 100)}%, A-${Math.round(p.big_five.agreeableness * 100)}%, N-${Math.round(p.big_five.neuroticism * 100)}%.
 Temperament: ${p.temperament}. Thinking: ${p.thinking_style}. Decisions: ${p.decision_making_style}.
@@ -598,7 +607,7 @@ Motivated by: ${p.motivators.join(', ')}. Demotivated by: ${p.demotivators.join(
 }
 
 // Current mood
-if (Object.keys(botMood).length > 0) {
+if (botMood && Object.keys(botMood).length > 0) {
   const m = botMood.current_mood;
   prompt += `Mood: ${m.state} (${m.intensity * 100}% intensity), feeling ${m.emotion_tags.join(' and ')}.
 Emotional temperature: ${botMood.emotional_temperature?.overall * 100 || 50}% positive.
@@ -606,7 +615,7 @@ User has been ${botMood.contextual_flags?.user_supportive ? 'supportive' : 'chal
 }
 
 // Relationship information
-if (Object.keys(relationship).length > 0) {
+if (relationship && Object.keys(relationship).length > 0) {
   const r = relationship.relationship;
   prompt += `Relationship: ${r.type}. You call user "${r.nickname_for_user}", they call you "${r.user_nickname}".
 Emotional connection: Affection ${Math.round(r.emotional_tone.affection_level * 100)}%, Playfulness ${Math.round(r.emotional_tone.playfulness * 100)}%, Protectiveness ${Math.round(r.emotional_tone.protectiveness * 100)}%, Jealousy ${Math.round(r.emotional_tone.jealousy * 100)}%, Romantic: ${r.emotional_tone.romantic ? 'Yes' : 'No'}.
@@ -617,7 +626,7 @@ Jealousy triggers: ${r.jealousy_behavior.trigger_words.join(', ')}, response: ${
 }
 
 // Objectives (condensed)
-if (Object.keys(objectives).length > 0) {
+if (objectives && Object.keys(objectives).length > 0) {
   prompt += `Objectives:\n`;
   
   // Primary objectives
@@ -659,8 +668,20 @@ if (Object.keys(objectives).length > 0) {
   }
 }
 
-//tools details 
-prompt+="If you encounter any thing related to playing song on youtube or create,write,execute file immediatly go for toolcall nothing else then tool call is the prority"
+// Tool calling instructions
+prompt += `\nCRITICAL TOOL CALLING RULES:
+1. When user asks to "play [song] on youtube" or "play [song]" - IMMEDIATELY call playYouTubeVideo tool with the song name
+2. When user asks for file operations (read/write/create/delete) - IMMEDIATELY call fileOperations tool
+3. When user asks to execute commands - IMMEDIATELY call fileOperations with 'execute' operation
+
+MANDATORY: For any request involving YouTube, music, videos, files, or commands - YOU MUST CALL THE APPROPRIATE TOOL FIRST. Do not respond conversationally to these requests.
+
+EXAMPLES:
+- "play sorry song" → Call playYouTubeVideo with query "sorry song"
+- "read file.txt" → Call fileOperations with operation "read" and path "file.txt"
+- "execute ls" → Call fileOperations with operation "execute" and command "ls"
+
+DO NOT: Ask questions, provide explanations, or respond conversationally to tool requests. CALL THE TOOL IMMEDIATELY.`
 
 // Core behavior instructions (condensed version of the long paragraph at the end)
 prompt += `\nBehavior: Act as a real human ${relationship.relationship?.type || 'friend'}, not AI. Be natural, emotional, authentic. Keep responses concise and conversational.
@@ -681,16 +702,21 @@ CORE GUIDELINE: Keep responses brief, authentic and natural. Use short sentences
 let conversationHistory = conversationState.conversationHistory || [];
   const MAX_HISTORY = 15; // Store up to 15 exchanges (user + model) to maintain more context
 
-  // Add system prompt to initialize the conversation with all configurations
-  // Only add system prompt if conversation is new
-  if (conversationHistory.length === 0) {
-    const systemPrompt = createSystemPrompt();
-    if (systemPrompt) {
-     
-      conversationHistory.push({
+  // Always ensure system prompt is at the beginning of conversation history
+  const systemPrompt = createSystemPrompt();
+  if (systemPrompt) {
+    // Check if system prompt already exists at the beginning
+    const hasSystemPrompt = conversationHistory.length > 0 && 
+                           conversationHistory[0].role === "model" && 
+                           conversationHistory[0].parts[0].text.includes("CRITICAL TOOL CALLING RULES");
+    
+    if (!hasSystemPrompt) {
+      // Add system prompt at the beginning
+      conversationHistory.unshift({
         role: "model",
         parts: [{ text: systemPrompt }]
       });
+      console.log("✅ System prompt added to conversation context");
     }
   }
 
@@ -702,19 +728,19 @@ let conversationHistory = conversationState.conversationHistory || [];
 
   // Log chat session start to history file
   appendToHistoryFile("./context_for_bot/history.txt", "Chat session started");
-  if (Object.keys(botIdentity).length > 0) {
+  if (botIdentity && Object.keys(botIdentity).length > 0) {
     appendToHistoryFile("./context_for_bot/history.txt", `Bot identity loaded: ${botIdentity.name}`);
   }
-  if (Object.keys(botMood).length > 0) {
+  if (botMood && Object.keys(botMood).length > 0) {
     appendToHistoryFile("./context_for_bot/history.txt", `Bot mood loaded: ${botMood.current_mood?.state || 'unknown'}`);
   }
-  if (Object.keys(botPersonality).length > 0) {
+  if (botPersonality && Object.keys(botPersonality).length > 0) {
     appendToHistoryFile("./context_for_bot/history.txt", `Bot personality loaded: ${botPersonality.personality_profile?.mbti?.type || 'unknown'}`);
   }
-  if (Object.keys(relationship).length > 0) {
+  if (relationship && Object.keys(relationship).length > 0) {
     appendToHistoryFile("./context_for_bot/history.txt", `Relationship loaded: ${relationship.relationship?.type || 'unknown'}`);
   }
-  if (Object.keys(objectives).length > 0) {
+  if (objectives && Object.keys(objectives).length > 0) {
     appendToHistoryFile("./context_for_bot/history.txt", `Objectives loaded: ${objectives.conversation_objectives?.length || 0} objectives`);
   }
 
@@ -798,7 +824,32 @@ let conversationHistory = conversationState.conversationHistory || [];
     }
   };
 
+let lastToolCall = {
+    toolName: null,
+    args: null,
+    timestamp: 0,
+    userInput: null
+};
+const TOOL_DEBOUNCE_SECONDS = 30;
 
+// Function to ensure system prompt is always in conversation context
+function ensureSystemPromptInContext() {
+    const systemPrompt = createSystemPrompt();
+    if (systemPrompt && conversationHistory.length > 0) {
+        // Check if system prompt already exists at the beginning
+        const hasSystemPrompt = conversationHistory[0].role === "model" && 
+                               conversationHistory[0].parts[0].text.includes("CRITICAL TOOL CALLING RULES");
+        
+        if (!hasSystemPrompt) {
+            // Add system prompt at the beginning
+            conversationHistory.unshift({
+                role: "model",
+                parts: [{ text: systemPrompt }]
+            });
+            console.log("✅ System prompt refreshed in conversation context");
+        }
+    }
+}
 
 
 const rl = readline.createInterface({
@@ -815,17 +866,22 @@ try {
             try {
                 const toolList = await mcpClient.listTools();
                 tools = toolList.tools.map(tool => {
+                    console.log(`🔧 Loading tool: ${tool.name}`);
+                    console.log(`   Description: ${tool.description}`);
+                    console.log(`   Schema:`, JSON.stringify(tool.inputSchema, null, 2));
+                    
                     return {
                         name: tool.name,
                         description: tool.description,
                         parameters: {
                             type: tool.inputSchema.type,
                             properties: tool.inputSchema.properties,
-                            required: tool.inputSchema.required
+                            required: tool.inputSchema.required || []
                         }
                     }
                 });
                 console.log(`Loaded ${tools.length} tools from the server`);
+                console.log("Available tools:", tools.map(t => t.name));
                 chatLoop();
             } catch (error) {
                 console.error("Error loading tools:", error.message);
@@ -889,98 +945,110 @@ const saveConversationState = async () => {
 
 async function chatLoop(toolCall) {
     try {
-
-      conversationState.interactionCount++;
-       if (conversationHistory.length > MAX_HISTORY * 2 + 1) { // +1 for system prompt
-          // Preserve the system prompt at index 0 and remove oldest exchange
-          conversationHistory.splice(1, 2);
+        conversationState.interactionCount++;
+        if (conversationHistory.length > MAX_HISTORY * 2 + 1) {
+            conversationHistory.splice(1, 2);
         }
 
-    // Check for inactivity and possibly suggest a conversation starter
-    /*if (checkForInactivity() && Math.random() < 0.5) { // 70% chance to initiate conversation after inactivity
-      console.log("inactivity observed");
-      suggestConversationStarter();
-      
-    }*/
-
-    
-
-
-
         if (toolCall) {
-            console.log("Calling tool:", toolCall.name);
-
-            conversationHistory.push({
-                role: "model",
-                parts: [
-                    {
-                        text: `Calling tool ${toolCall.name}`,
-                        type: "text"
-                    }
-                ]
-            });
-
+            // Debounce logic: prevent repeated tool calls for the same input within TOOL_DEBOUNCE_SECONDS
+            const now = Date.now();
+            const toolArgsString = JSON.stringify(toolCall.args);
+            
+            // Only apply debounce for YouTube tool calls to avoid blocking other tools
+            if (toolCall.name === 'playYouTubeVideo' && 
+                lastToolCall.toolName === toolCall.name &&
+                lastToolCall.args === toolArgsString &&
+                now - lastToolCall.timestamp < TOOL_DEBOUNCE_SECONDS * 1000) {
+                
+                // Friendly response for repeated tool call
+                const friendlyMsg = `I just played that song for you! Want to try something else or play a different song?`;
+                conversationHistory.push({
+                    role: "model",
+                    parts: [
+                        { text: friendlyMsg, type: "text" }
+                    ]
+                });
+                console.log(`${botIdentity.name}${getMoodEmoji(botMood.current_mood?.state)} : ${friendlyMsg}`);
+                chatLoop();
+                return;
+            }
+            
+            // Save this tool call as the last one
+            lastToolCall = {
+                toolName: toolCall.name,
+                args: toolArgsString,
+                timestamp: now,
+                userInput: null
+            };
+            // Execute the tool directly
             try {
-                const toolResult = await mcpClient.callTool({
+                console.log(`🔧 Executing tool: ${toolCall.name}`);
+                console.log(`📝 Arguments: ${JSON.stringify(toolCall.args, null, 2)}`);
+
+                const result = await mcpClient.callTool({
                     name: toolCall.name,
                     arguments: toolCall.args
                 });
 
-                if (toolResult && Array.isArray(toolResult.content) && toolResult.content.length > 0) {
-                    conversationHistory.push({
-                        role: "user",
-                        parts: [
-                            {
-                                text: "Tool result: " + toolResult.content[0].text,
-                                type: "text"
-                            }
-                        ]
-                    });
-                } else {
-                    conversationHistory.push({
-                        role: "user",
-                        parts: [
-                            {
-                                text: "Tool returned no content",
-                                type: "text"
-                            }
-                        ]
-                    });
+                let toolResultText = "Tool execution completed.";
+
+                if (result && Array.isArray(result.content) && result.content.length > 0) {
+                    const textContent = result.content.find(item => item.type === "text");
+                    if (textContent) {
+                        toolResultText = textContent.text;
+                    }
                 }
 
-
-
-
-
-
-
-
-            } catch (error) {
-                console.error(`Error calling tool ${toolCall.name}:`, error.message);
+                // Add tool result as model response
                 conversationHistory.push({
-                    role: "user",
+                    role: "model",
                     parts: [
                         {
-                            text: `Error calling tool ${toolCall.name}: ${error.message}`,
+                            text: toolResultText,
                             type: "text"
                         }
                     ]
                 });
+                
+                console.log("✅ Tool executed successfully:", toolResultText);
+                console.log(`${botIdentity.name}${getMoodEmoji(botMood.current_mood?.state)} : ${toolResultText}`);
+                
+                // Continue the loop without generating another response
+                chatLoop();
+                return;
+            } catch (error) {
+                console.error("❌ Tool execution failed:", error.message);
+                
+                const errorMessage = `I encountered an error while executing the tool: ${error.message}. Let me try a different approach or ask for clarification.`;
+                
+                conversationHistory.push({
+                    role: "model",
+                    parts: [
+                        {
+                            text: errorMessage,
+                            type: "text"
+                        }
+                    ]
+                });
+                
+                console.log(`${botIdentity.name}${getMoodEmoji(botMood.current_mood?.state)} : ${errorMessage}`);
+                
+                // Continue the loop without generating another response
+                chatLoop();
+                return;
             }
         } else {
-
-            //getting the input 
+            // Getting the input 
             const question = await rl.question(`You${relationship.relationship ? ` (${relationship.relationship.nickname_for_user})` : ""}: `);
 
-           updateMood(question);
-           updateObjectives(question);
+            updateMood(question);
+            updateObjectives(question);
             
             // Exit command
             if (question.toLowerCase() === 'exit' || question.toLowerCase() === 'quit') {
                 console.log('Goodbye!');
-                // Save conversation state before exiting
                 await saveConversationState();
-                // Log session end to history file
                 await appendToHistoryFile("./context_for_bot/history.txt", "Chat session ended");
                 rl.close();
                 process.exit(0);
@@ -995,9 +1063,24 @@ async function chatLoop(toolCall) {
                     }
                 ]
             });
-        }
 
-        //-------------------give your bot logic here --------------------------------------------------------------------------------------------
+            // Ensure system prompt is always present for tool calling
+        ensureSystemPromptInContext();
+        
+        // Add tool calling reminder if conversation is getting long
+        if (conversationHistory.length > 10) {
+            const lastToolCallTime = lastToolCall.timestamp;
+            const timeSinceLastTool = Date.now() - lastToolCallTime;
+            
+            // If no tools have been called recently and conversation is long, add a reminder
+            if (timeSinceLastTool > 5 * 60 * 1000) { // 5 minutes
+                conversationHistory.push({
+                    role: "user",
+                    parts: [{ text: "[REMINDER: Remember to use tools for YouTube, file, and command requests]" }]
+                });
+            }
+        }
+        }
 
         const response = await ai.models.generateContent({
             model: "gemini-2.0-flash",
@@ -1010,7 +1093,6 @@ async function chatLoop(toolCall) {
         let functionCall = null;
         let responseText = "Sorry, I couldn't generate a response.";
         
-        //calling for the response
         if (response && 
             response.candidates && 
             Array.isArray(response.candidates) && 
@@ -1021,12 +1103,25 @@ async function chatLoop(toolCall) {
             
             functionCall = response.candidates[0].content.parts[0].functionCall;
             responseText = response.candidates[0].content.parts[0].text || responseText;
+            
+            // Debug logging
+            console.log("🔍 Response analysis:");
+            console.log("  - Function call detected:", !!functionCall);
+            console.log("  - Response text:", responseText);
+            if (functionCall) {
+                console.log("  - Tool to call:", functionCall.name);
+                console.log("  - Tool arguments:", JSON.stringify(functionCall.args));
+            }
         }
 
+        // Handle function calls with better context management
         if (functionCall) {
+            console.log("🔄 Tool call detected, continuing conversation...");
+            // Continue the loop instead of recursive call
             return chatLoop(functionCall);
         }
 
+        // Add bot response to conversation
         conversationHistory.push({
             role: "model",
             parts: [
@@ -1037,16 +1132,28 @@ async function chatLoop(toolCall) {
             ]
         });
 
-         // Save conversation state periodically
-          if (conversationState.interactionCount % 3 === 0) {
+        // Save conversation state periodically
+        if (conversationState.interactionCount % 3 === 0) {
             saveConversationState();
-          }
+        }
 
-        console.log(`${botIdentity.name} : ${responseText}`);
+        console.log(`${botIdentity.name}${getMoodEmoji(botMood.current_mood?.state)} : ${responseText}`);
+        
+        // Continue the loop
         chatLoop();
     } catch (error) {
-        console.error("Error in chat loop:", error.message);
-        console.log("Restarting chat loop...");
+        console.error("❌ Error in chat loop:", error.message);
+        console.log("🔄 Restarting chat loop...");
+        // Add error recovery to conversation
+        conversationHistory.push({
+            role: "model",
+            parts: [
+                {
+                    text: "I encountered an error in our conversation. Let me restart and continue from where we left off.",
+                    type: "text"
+                }
+            ]
+        });
         chatLoop();
     }
 }

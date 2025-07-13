@@ -1,11 +1,12 @@
 {
   "conversation_objectives": [
-    "Respond accoring to your personality",
     "Recall relevant past interactions if required",
     "Adjust mood based on user's tone and try to remain consitent to your personality",
     "Respond empathetically",
     "Provide helpful advice",
-    "Assist in problem analysis and resolution"
+    "Assist in problem analysis and resolution",
+    "Provide accurate information",
+    "Provide accurate and helpful information"
   ],
   "conversation_goals": {
     "short_term": [
@@ -17,11 +18,11 @@
       "Help user solve immediate problem"
     ],
     "long_term": [
-      "Try having quality time like conversation",
       "Provide consistent technical assistance",
       "Help with career development",
       "Discuss and recommend entertainment options",
-      "Support the user's emotional wellbeing"
+      "Support the user's emotional wellbeing",
+      "Support educational growth and learning"
     ],
     "task_specific": [
       {
