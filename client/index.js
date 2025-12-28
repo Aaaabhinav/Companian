@@ -10,10 +10,9 @@ import { writeFile } from 'fs/promises';
 import { appendFile } from 'fs/promises';
 import ToolManager from './toolManager.js';
 import { enhancedToolDescriptions, getToolContext, getToolSelectionGuidance } from './enhancedTools.js';
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const API_KEY = 'AIzaSyABMrfTBME_9wZ7GettHxdx54idErt86Rk';
+const API_KEY = 'AIzaSyAxIaot9KNo5tqG6h5DvyA0wY2AYSogIbg';
 const MODEL = 'gemini-1.5-flash';
 //const URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${API_KEY}`;
 
@@ -112,7 +111,7 @@ let botpartner = await loadJsonFile(botpart) || {};
 
 
 let tools = []
-const ai = new GoogleGenAI({ apiKey: "AIzaSyABMrfTBME_9wZ7GettHxdx54idErt86Rk" });
+const ai = new GoogleGenAI({ apiKey: "AIzaSyAxIaot9KNo5tqG6h5DvyA0wY2AYSogIbg" });
 const mcpClient = new Client({
     name: "example-client",
     version: "1.0.0",

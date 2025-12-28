@@ -4,6 +4,7 @@ import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { chromium } from 'playwright';
 import { z } from "zod";
 import { handleFileOperation, toolSchema as fileOpsSchema } from "./file-ops.tool.js";
+import { handleWordDocumentCreator, toolSchema as wordDocSchema } from "./word-document-creator.tool.js";
 
 // Initialize Playwright browser variables
 let browser = null;
@@ -160,6 +161,16 @@ server.tool(
     fileOpsSchema.schema,
     async (args) => {
         return await handleFileOperation(args);
+    }
+);
+
+// Word Document Creator tool
+server.tool(
+    wordDocSchema.name,
+    wordDocSchema.description,
+    wordDocSchema.schema,
+    async (args) => {
+        return await handleWordDocumentCreator(args);
     }
 );
 
